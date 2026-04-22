@@ -1422,3 +1422,11 @@ Apache License 2.0. See [LICENSE](LICENSE) for details.
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/drasi-project/drasi-server/issues)
+
+
+## Testing by Kamal
+- `cargo build -p drasi-reaction-log --features dynamic-plugin`
+- `cargo build -p drasi-source-mqtt --features dynamic-plugin`
+- `cp drasi-trial/target/debug/libdrasi_source_mqtt.so drasi-server/plugin`
+- `cp drasi-trial/target/debug/libdrasi_reaction_log.so drasi-server/plugin`
+- `cargo run -- --config config/server-mqtt.yaml --plugins-dir ./plugins`

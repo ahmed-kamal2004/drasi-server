@@ -1,0 +1,120 @@
+# Drasi Server Configuration with Environment Variables
+#
+# This example demonstrates how to use environment variable interpolation
+# in Drasi Server configuration files.
+#
+# Syntax:
+#   ${VAR_NAME}           - Required variable (fails if not set)
+#   ${VAR_NAME:-default}  - Variable with default value
+#
+# Security Best Practice:
+# Use environment variables for sensitive data like passwords, API keys,
+# and connection strings instead of hardcoding them in config files.
+
+# Server bind address - uses environment variable with default
+apiVersion: drasi.io/v1
+host: "${SERVER_HOST:-0.0.0.0}"
+
+# Server port - uses environment variable with default
+port: "${SERVER_PORT:-8080}"
+
+# Logging level: trace, debug, info, warn, error
+logLevel: "${LOG_LEVEL:-info}"
+
+# Enable automatic persistence of API changes to this file
+persistConfig: true
+
+# Enable persistent indexing using RocksDB (default: false, uses in-memory indexes)
+# persistIndex: false
+
+# Unique server identifier
+id: "${SERVER_ID:-drasi-server-1}"
+
+# Data sources
+sources:
+  # MQTT source with CDC (Change Data Capture)
+  - kind: mqtt
+    id: mqtt-source
+    autoStart: true
+    host: "localhost"
+    port: 8883
+    topics:
+      - topic: "sensors/temperature"
+        qos: 1
+      - topic: "building/+/+/+"
+        qos: 0
+    topic_mappings:
+      - pattern: "sensors/{type}"
+        entity:
+          label: "readings"
+          id: "symbol"
+        properties:
+          mode: payload_as_field
+          field_name: "{type}"
+          inject:
+          - type: "{type}"
+      - pattern: "building/{floor}/{room}/{device}"
+        entity:
+          label: "DEVICE"
+          id: "{room}:{device}"
+        properties:
+          mode: payload_as_field
+          field_name: "reading"
+          inject_id: "true"
+          inject:
+          - room: "{room}"
+          - floor: "{floor}"
+          - device: "{device}"
+        nodes:
+          - label: "FLOOR"
+            id: "{floor}"
+          - label: "ROOM"
+            id: "{room}"
+        relations:
+          - label: "LOCATED_IN_FLOOR"
+            from: "ROOM"
+            to: "FLOOR"
+            id: "{room}_located_in_{floor}"
+          - label: "LOCATED_IN_ROOM"
+            from: "DEVICE"
+            to: "ROOM"
+            id: "{device}_located_in_{room}"
+    event_channel_capacity: 20
+    keep_alive: 5
+    conn_timeout: 5
+    transport:
+        mode: tls
+        config:
+            ca_path: "/var/certs-drasi/ca.crt"
+            client_cert_path: "/var/certs-drasi/client.crt"
+            client_key_path: "/var/certs-drasi/client.key"
+    adaptive_enabled: true
+    adaptive_max_batch_size: 1000
+    adaptive_min_batch_size: 10
+    adaptive_max_wait_ms: 100
+    adaptive_min_wait_ms: 1
+    adaptive_window_secs: 5
+
+# Continuous queries
+queries:
+  - id: test-query
+    query: |
+        MATCH (rd:DEVICE)-[:LOCATED_IN_ROOM]->(r:ROOM)-[:LOCATED_IN_FLOOR]->(f:FLOOR)
+        WHERE rd.id = 'r1:d2' AND r.id = 'r1' AND f.id = 'f2'
+        RETURN rd.reading as val,
+                rd.room as room
+    queryLanguage: Cypher
+    autoStart: true
+    enableBootstrap: true
+    
+    sources:
+      - sourceId: mqtt-source
+
+# Reactions (where to send query results)
+reactions:
+  # Log reaction for debugging
+  - kind: log
+    id: log-high-value-orders
+    queries:
+      - test-query
+    autoStart: true

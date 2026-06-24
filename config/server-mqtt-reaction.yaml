@@ -1,0 +1,81 @@
+# Drasi Server Configuration with Environment Variables
+#
+# This example demonstrates how to use environment variable interpolation
+# in Drasi Server configuration files.
+#
+# Syntax:
+#   ${VAR_NAME}           - Required variable (fails if not set)
+#   ${VAR_NAME:-default}  - Variable with default value
+#
+# Security Best Practice:
+# Use environment variables for sensitive data like passwords, API keys,
+# and connection strings instead of hardcoding them in config files.
+
+# Server bind address - uses environment variable with default
+apiVersion: drasi.io/v1
+host: "${SERVER_HOST:-0.0.0.0}"
+
+# Server port - uses environment variable with default
+port: "${SERVER_PORT:-8080}"
+
+# Logging level: trace, debug, info, warn, error
+logLevel: "${LOG_LEVEL:-info}"
+
+# Enable automatic persistence of API changes to this file
+persistConfig: true
+
+# Enable persistent indexing using RocksDB (default: false, uses in-memory indexes)
+# persistIndex: false
+
+# Unique server identifier
+id: "${SERVER_ID:-drasi-server-1}"
+
+# Data sources
+sources:
+  # HTTP source with CDC (Change Data Capture)
+  - kind: http
+    id: http-source
+    autoStart: true
+    host: "0.0.0.0"
+    port: 9000
+
+# Continuous queries
+queries:
+  - id: test-query
+    query: |
+      MATCH (s:sensors)
+      RETURN s.id AS id,
+              s.temperature AS temperature,
+              s.location AS location
+    queryLanguage: Cypher
+    autoStart: true
+    enableBootstrap: true
+    
+    sources:
+      - sourceId: http-source
+
+# Reactions (where to send query results)
+reactions:
+  - kind: mqtt
+    id: mqtt-reaction
+    queries:
+      - test-query
+    url: mqtt://localhost:8883
+    client_id: mapped-client
+    protocol_version: v3_1_1
+    event_channel_capacity: 321
+    max_inflight: 8
+    keep_alive: 20
+    clean_start: true
+    conn_timeout: 7000
+    session_expiry_interval: 66
+    default_template:
+      added:
+        template: "[ADD] sensor={{after.id}} temp={{after.temperature}} loc={{after.location}}"
+        topic: "sensors/added"
+      updated:
+        template: "[UPDATE] sensor={{after.id}} temp={{before.temperature}} -> {{after.temperature}}"
+        topic: "sensors/updated"
+      deleted:
+        template: "[DELETE] sensor={{before.id}}"
+        topic: "sensors/deleted"

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use drasi_lib::secret_store::SecretStoreProvider;
 use drasi_lib::state_store::StateStoreProvider;
 use drasi_lib::{DrasiError, DrasiLib, DrasiLibBuilder, Query};
 use drasi_lib::{IndexBackendPlugin, Reaction as ReactionTrait, Source as SourceTrait};
@@ -74,13 +75,24 @@ impl DrasiServerBuilder {
         self
     }
 
-    /// Add an index provider for persistent storage
+    /// Register a named index backend provider and make it the instance default.
     ///
-    /// By default, DrasiLib uses in-memory indexes. Use this method to inject
-    /// a persistent index provider like RocksDB.
-    pub fn with_index_provider(mut self, provider: Arc<dyn IndexBackendPlugin>) -> Self {
+    /// By default, DrasiLib uses in-memory indexes. Use this method to inject a
+    /// persistent provider (e.g. RocksDB) under `name` and mark it as the default
+    /// backend: every query without an explicit `storageBackend` is persisted to
+    /// it. When a per-query `storageBackend` references a named provider, it must
+    /// specify this same `name`.
+    ///
+    /// This mirrors [`DrasiLibBuilder::with_default_index_provider`]. drasi-server
+    /// registers its built-in RocksDB provider under
+    /// [`crate::PERSISTENT_INDEX_PROVIDER_NAME`] (`"rocksdb"`).
+    pub fn with_default_index_provider(
+        mut self,
+        name: impl Into<String>,
+        provider: Arc<dyn IndexBackendPlugin>,
+    ) -> Self {
         let builder = self.primary_builder_mut();
-        *builder = std::mem::take(builder).with_index_provider(provider);
+        *builder = std::mem::take(builder).with_default_index_provider(name, provider);
         self
     }
 
@@ -107,6 +119,16 @@ impl DrasiServerBuilder {
     pub fn with_state_store_provider(mut self, provider: Arc<dyn StateStoreProvider>) -> Self {
         let builder = self.primary_builder_mut();
         *builder = std::mem::take(builder).with_state_store_provider(provider);
+        self
+    }
+
+    /// Add a secret store provider for resolving ConfigValue::Secret references
+    ///
+    /// When set, component configs can use `{ kind: Secret, name: "..." }` values
+    /// whose actual values are resolved at runtime by the configured provider.
+    pub fn with_secret_store_provider(mut self, provider: Arc<dyn SecretStoreProvider>) -> Self {
+        let builder = self.primary_builder_mut();
+        *builder = std::mem::take(builder).with_secret_store_provider(provider);
         self
     }
 
